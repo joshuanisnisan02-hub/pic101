@@ -17,22 +17,55 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download corrected course archive
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -L --fail --retry 3 \
-            'https://drive.usercontent.google.com/download?id=1RcOLoUmXrnxMP-1AZDgeT08mCg3SsEL2&export=download&confirm=t' \
-            -o /tmp/pic101.tar.xz
-          xz -t /tmp/pic101.tar.xz
-
-      - name: Extract and verify course
+      - name: Prepare corrected course
         shell: bash
         run: |
           set -euo pipefail
           rm -rf /tmp/pic101-site
           mkdir -p /tmp/pic101-site
-          tar -xJf /tmp/pic101.tar.xz -C /tmp/pic101-site
+          if [ -d .payload-final ]; then
+            cat > /tmp/payload.sha256 <<'EOF'
+          0a4104124f005696cbc42b8e37c0f6e80ce53fe946ac39d2c67009c4f200ec70  .payload-final/part_00
+          4b3217e77c8ec2c4e2fba4360b7aa685eaa4bf11e88d07baa6daac76781f6476  .payload-final/rest_00
+          771c950434292b743f8e18a46eaf66e994d008c49d0467cad0ff19d1796d5f12  .payload-final/rest_01
+          2417c46fad8d533aefefb104f7750e29029c294851246b321dde1bec98b6833b  .payload-final/rest_02
+          824c163baade7e7393890a6fd5792ca9bc9b6f00b08eed16a1f8f367af78c5c5  .payload-final/rest_03
+          d9c76adc4f92f3eb23de80d0aaddc3dcd24ebb50d022366c754126637837e41c  .payload-final/rest_04
+          8a6b68a0a784abc867bf5401f23556a798861a67916755b35ecef944575cd1eb  .payload-final/rest_05
+          0afc020b25a8b52387fd6c9e6d1416199f35deb9b6f04fa990493132736c3d83  .payload-final/rest_06
+          8ccae0d77eb8d1d646268748d4d6c66dbfc12a26aa266a1a608e5c393a589eda  .payload-final/rest_07
+          a1432299f9cfcc7f6c44b38d9d88cf1169a897d7dbdbdfe81cd663d13e3cd94e  .payload-final/rest_08
+          ac60d2dab6b837f3b27993539cc10226aedccbe15296c96e3c8f098c38c11873  .payload-final/rest_09
+          9a4d0d6685db95f758cf2a2610fd2816941d24e6822ab4f5fe072411b5f5afec  .payload-final/rest_10
+          bae91c239b151044ae5d9c8bbcda0f84b1e7346af4066e4fa70ead5617fc1260  .payload-final/rest_11
+          52638ffb3619dd2887bb1bf393e5e56aec662ef15e62ab0c6680b5c7bd8bddab  .payload-final/rest_12
+          19c11d4b582d0654de086c69618858b49eb048d17f3a6fa05da2b400c4a26333  .payload-final/rest_13
+          1eae5d2c70484b2ef853690ec67f41a06b05f0abce33572d733af4fa95739653  .payload-final/rest_14
+          5bb0ded91dcc93ccf66442d0859004ddfdb327f7cd68bf9adf655c6a5fed09d6  .payload-final/rest_15
+          b4d0ba30033b9270c584d8dc4ee14a2d966e031af5452ee111eb9652bced2f2f  .payload-final/rest_16
+          3bf8e6ba1476a34f448c195fb1d6db88d798e1109d3b96bb05f32f140b94bb8d  .payload-final/rest_17
+          6b375a004f9a267df6861e74cefc56e4d1712bc3fd8ffbcd07bf0120e8325d50  .payload-final/rest_18
+          c35f24ae631bc11123a5110fd8f787f1b22120e0303222f2f7eb49f0a902fb73  .payload-final/rest_19
+          2285935263f2d5c7375e71eed1b6a1fd32533e8322a9dbd5e470d3953bb03a5b  .payload-final/rest_20
+          647a65d834bc00232d72ffa43600a4724033edaed8a8c0811604dd14f6093d26  .payload-final/rest_21
+          4da8f10e231148907aa130cdffffc567c4d8af20f5ddbc07f981685d0a116f78  .payload-final/rest_22
+          EOF
+            sed -i 's/^          //' /tmp/payload.sha256
+            sha256sum -c /tmp/payload.sha256
+            {
+              cat .payload-final/part_00
+              for i in $(seq -w 0 22); do cat ".payload-final/rest_${i}"; done
+            } | base64 -d > /tmp/pic101.tar.xz
+            xz -t /tmp/pic101.tar.xz
+            tar -xJf /tmp/pic101.tar.xz -C /tmp/pic101-site
+          else
+            cp -a ./*.html /tmp/pic101-site/
+          fi
+
+      - name: Verify course contents
+        shell: bash
+        run: |
+          set -euo pipefail
           test -f /tmp/pic101-site/index.html
           test "$(find /tmp/pic101-site -maxdepth 1 -name '*.html' | wc -l)" -eq 38
           if grep -R -n --include='*.html' 'Elenito G. David' /tmp/pic101-site; then
@@ -42,10 +75,11 @@ jobs:
           grep -R -q --include='*.html' 'Joshua E. Nisnisan' /tmp/pic101-site
 
       - name: Publish source to main
+        if: ${{ hashFiles('.payload-final/part_00') != '' }}
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf .deploy .deploy2 .site-payload .site-payload2
+          rm -rf .deploy .deploy2 .site-payload .site-payload2 .payload-final
           find . -maxdepth 1 -type f -name '*.html' -delete
           rm -f README.txt .nojekyll
           cp -a /tmp/pic101-site/. .
@@ -53,10 +87,8 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m 'Publish corrected PIC101 course'
-            git push origin main
-          fi
+          git commit -m 'Publish corrected PIC101 course'
+          git push origin main
 
       - name: Publish gh-pages branch
         uses: peaceiris/actions-gh-pages@v4
