@@ -1,0 +1,69 @@
+name: Publish PIC101 Course
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-pic101.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download corrected course archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 \
+            'https://drive.usercontent.google.com/download?id=1RcOLoUmXrnxMP-1AZDgeT08mCg3SsEL2&export=download&confirm=t' \
+            -o /tmp/pic101.tar.xz
+          xz -t /tmp/pic101.tar.xz
+
+      - name: Extract and verify course
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/pic101-site
+          mkdir -p /tmp/pic101-site
+          tar -xJf /tmp/pic101.tar.xz -C /tmp/pic101-site
+          test -f /tmp/pic101-site/index.html
+          test "$(find /tmp/pic101-site -maxdepth 1 -name '*.html' | wc -l)" -eq 38
+          if grep -R -n --include='*.html' 'Elenito G. David' /tmp/pic101-site; then
+            echo 'Old instructor name still exists.' >&2
+            exit 1
+          fi
+          grep -R -q --include='*.html' 'Joshua E. Nisnisan' /tmp/pic101-site
+
+      - name: Publish source to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .deploy .deploy2 .site-payload .site-payload2
+          find . -maxdepth 1 -type f -name '*.html' -delete
+          rm -f README.txt .nojekyll
+          cp -a /tmp/pic101-site/. .
+          touch .nojekyll
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'Publish corrected PIC101 course'
+            git push origin main
+          fi
+
+      - name: Publish gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: /tmp/pic101-site
+          publish_branch: gh-pages
+          force_orphan: true
