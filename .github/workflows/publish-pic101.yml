@@ -3,8 +3,6 @@ name: Publish PIC101 Course
 on:
   push:
     branches: [main]
-    paths:
-      - '.github/workflows/publish-pic101.yml'
   workflow_dispatch:
 
 permissions:
